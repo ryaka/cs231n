@@ -262,12 +262,9 @@ class FullyConnectedNet(object):
     # layer, etc.                                                              #
     ############################################################################
 
-    # Store each layer's cache values in this list. Layer 0 will be a
-    # sentinel and it's values are the identity on the input.
-    #
-    # key: (int) layer number
-    # value: (layer_output, a_cache, z_cache)
-    layer_cache = [(X, X, X, None, None)]
+    # Store each layer's cache values in this dictionary. Layer 0 will be a
+    # sentinel.
+    layer_cache = [{'output': X}]
     for layer in xrange(1, self.num_layers + 1):
       weight_label = 'W%d' % layer
       bias_label = 'b%d' % layer
@@ -275,31 +272,30 @@ class FullyConnectedNet(object):
       weight = self.params[weight_label]
       bias = self.params[bias_label]
 
-      # Get the previous layer's output which is this layer's input
-      input_z, _, _, _, _ = layer_cache[layer-1]
+      # Cache for this particular layer
+      cache = {}
 
-      a, a_cache = affine_forward(input_z, weight, bias)
+      # Get the previous layer's output which is this layer's input
+      input_z = layer_cache[layer-1]['output']
+
+      z, cache['affine'] = affine_forward(input_z, weight, bias)
 
       # If we are in a hidden layer, we need to pass it through our ReLU
-      bn_cache = None
-      dropout_cache = None
       if layer != self.num_layers:
         if self.use_batchnorm:
           gamma_label = 'gamma%d' % layer
           beta_label = 'beta%d' % layer
 
           bn_param, gamma, beta = self.bn_params[layer-1], self.params[gamma_label], self.params[beta_label]
-          a, bn_cache = batchnorm_forward(a, gamma, beta, bn_param)
+          z, cache['batchnorm'] = batchnorm_forward(z, gamma, beta, bn_param)
 
-        z, z_cache = relu_forward(a)
+        z, cache['relu'] = relu_forward(z)
 
         if self.use_dropout and self.dropout_param['mode'] == 'train':
-          z, dropout_cache = dropout_forward(z, self.dropout_param)
-      # Otherwise we just pass through with the identity
-      else:
-        z, z_cache = a, a
+          z, cache['dropout'] = dropout_forward(z, self.dropout_param)
 
-      layer_cache.append((z, a_cache, z_cache, bn_cache, dropout_cache))
+      cache['output'] = z
+      layer_cache.append(cache)
 
 
     ############################################################################
@@ -308,7 +304,7 @@ class FullyConnectedNet(object):
 
     # If test mode return early
     if mode == 'test':
-      return layer_cache[-1][0]
+      return layer_cache[-1]['output']
 
     loss, grads = 0.0, {}
     ############################################################################
@@ -325,7 +321,7 @@ class FullyConnectedNet(object):
     # of 0.5 to simplify the expression for the gradient.                      #
     ############################################################################
 
-    loss, dL = softmax_loss(layer_cache[-1][0], y)
+    loss, dL = softmax_loss(layer_cache[-1]['output'], y)
     # Take into account regularization
     if self.reg > 0:
       loss += 0.5 * self.reg *  np.sum(np.sum(v * v) for k, v in self.params.iteritems() if 'W' in k)
@@ -336,22 +332,22 @@ class FullyConnectedNet(object):
       bias_label = 'b%d' % layer
 
       # Retrieve cached values for the layer
-      _, a_cache, z_cache, bn_cache, dropout_cache = layer_cache[layer]
+      cache = layer_cache[layer]
 
       # If it is not the output layer, we need to take into account our ReLU
       # to decide where gradient backpropagated to.
       if layer != self.num_layers:
         if self.use_dropout:
-          dout = dropout_backward(dout, dropout_cache)
+          dout = dropout_backward(dout, cache['dropout'])
 
-        dout = relu_backward(dout, z_cache)
+        dout = relu_backward(dout, cache['relu'])
         if self.use_batchnorm:
           gamma_label = 'gamma%d' % layer
           beta_label = 'beta%d' % layer
-          dout, grads[gamma_label], grads[beta_label] = batchnorm_backward_alt(dout, bn_cache)
+          dout, grads[gamma_label], grads[beta_label] = batchnorm_backward_alt(dout, cache['batchnorm'])
 
       # Calculate gradients for this layer
-      dz, grads[weight_label], grads[bias_label] = affine_backward(dout, a_cache)
+      dz, grads[weight_label], grads[bias_label] = affine_backward(dout, cache['affine'])
 
       # Take into account regularization
       if self.reg > 0:
