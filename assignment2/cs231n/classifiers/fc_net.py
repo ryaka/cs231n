@@ -198,6 +198,13 @@ class FullyConnectedNet(object):
       self.params[weight_label] = weight
       self.params[bias_label] = bias
 
+      if self.use_batchnorm and idx + 1 != len(io_dims):
+        gamma_label = 'gamma%d' % (idx + 1)
+        beta_label = 'beta%d' % (idx + 1)
+
+        self.params[gamma_label] = np.ones(output_dim)
+        self.params[beta_label] = np.zeros(output_dim)
+
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -213,12 +220,12 @@ class FullyConnectedNet(object):
 
     # With batch normalization we need to keep track of running means and
     # variances, so we need to pass a special bn_param object to each batch
-    # normalization layer. You should pass self.bn_params[0] to the forward pass
-    # of the first batch normalization layer, self.bn_params[1] to the forward
+    # normalization layer. You should pass self.bn_params[1] to the forward pass
+    # of the first batch normalization layer, self.bn_params[2] to the forward
     # pass of the second batch normalization layer, etc.
     self.bn_params = []
     if self.use_batchnorm:
-      self.bn_params = [{'mode': 'train'} for i in xrange(self.num_layers - 1)]
+      self.bn_params = [{'mode': 'train'} for i in xrange(self.num_layers)]
 
     # Cast all parameters to the correct datatype
     for k, v in self.params.iteritems():
@@ -260,7 +267,7 @@ class FullyConnectedNet(object):
     #
     # key: (int) layer number
     # value: (layer_output, a_cache, z_cache)
-    layer_cache = [(X, X, X)]
+    layer_cache = [(X, X, X, None)]
     for layer in xrange(1, self.num_layers + 1):
       weight_label = 'W%d' % layer
       bias_label = 'b%d' % layer
@@ -269,18 +276,26 @@ class FullyConnectedNet(object):
       bias = self.params[bias_label]
 
       # Get the previous layer's output which is this layer's input
-      input_z, _, _ = layer_cache[layer-1]
+      input_z, _, _, _ = layer_cache[layer-1]
 
       a, a_cache = affine_forward(input_z, weight, bias)
 
       # If we are in a hidden layer, we need to pass it through our ReLU
+      bn_cache = None
       if layer != self.num_layers:
+        if self.use_batchnorm:
+          gamma_label = 'gamma%d' % layer
+          beta_label = 'beta%d' % layer
+
+          bn_param, gamma, beta = self.bn_params[layer-1], self.params[gamma_label], self.params[beta_label]
+          a, bn_cache = batchnorm_forward(a, gamma, beta, bn_param)
+
         z, z_cache = relu_forward(a)
       # Otherwise we just pass through with the identity
       else:
         z, z_cache = a, a
 
-      layer_cache.append((z, a_cache, z_cache))
+      layer_cache.append((z, a_cache, z_cache, bn_cache))
 
 
     ############################################################################
@@ -317,12 +332,16 @@ class FullyConnectedNet(object):
       bias_label = 'b%d' % layer
 
       # Retrieve cached values for the layer
-      _, a_cache, z_cache = layer_cache[layer]
+      _, a_cache, z_cache, bn_cache = layer_cache[layer]
 
       # If it is not the output layer, we need to take into account our ReLU
       # to decide where gradient backpropagated to.
       if layer != self.num_layers:
         dout = relu_backward(dout, z_cache)
+        if self.use_batchnorm:
+          gamma_label = 'gamma%d' % layer
+          beta_label = 'beta%d' % layer
+          dout, grads[gamma_label], grads[beta_label] = batchnorm_backward_alt(dout, bn_cache)
 
       # Calculate gradients for this layer
       dz, grads[weight_label], grads[bias_label] = affine_backward(dout, a_cache)
