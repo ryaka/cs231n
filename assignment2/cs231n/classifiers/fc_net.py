@@ -267,7 +267,7 @@ class FullyConnectedNet(object):
     #
     # key: (int) layer number
     # value: (layer_output, a_cache, z_cache)
-    layer_cache = [(X, X, X, None)]
+    layer_cache = [(X, X, X, None, None)]
     for layer in xrange(1, self.num_layers + 1):
       weight_label = 'W%d' % layer
       bias_label = 'b%d' % layer
@@ -276,12 +276,13 @@ class FullyConnectedNet(object):
       bias = self.params[bias_label]
 
       # Get the previous layer's output which is this layer's input
-      input_z, _, _, _ = layer_cache[layer-1]
+      input_z, _, _, _, _ = layer_cache[layer-1]
 
       a, a_cache = affine_forward(input_z, weight, bias)
 
       # If we are in a hidden layer, we need to pass it through our ReLU
       bn_cache = None
+      dropout_cache = None
       if layer != self.num_layers:
         if self.use_batchnorm:
           gamma_label = 'gamma%d' % layer
@@ -291,11 +292,14 @@ class FullyConnectedNet(object):
           a, bn_cache = batchnorm_forward(a, gamma, beta, bn_param)
 
         z, z_cache = relu_forward(a)
+
+        if self.use_dropout and self.dropout_param['mode'] == 'train':
+          z, dropout_cache = dropout_forward(z, self.dropout_param)
       # Otherwise we just pass through with the identity
       else:
         z, z_cache = a, a
 
-      layer_cache.append((z, a_cache, z_cache, bn_cache))
+      layer_cache.append((z, a_cache, z_cache, bn_cache, dropout_cache))
 
 
     ############################################################################
@@ -332,11 +336,14 @@ class FullyConnectedNet(object):
       bias_label = 'b%d' % layer
 
       # Retrieve cached values for the layer
-      _, a_cache, z_cache, bn_cache = layer_cache[layer]
+      _, a_cache, z_cache, bn_cache, dropout_cache = layer_cache[layer]
 
       # If it is not the output layer, we need to take into account our ReLU
       # to decide where gradient backpropagated to.
       if layer != self.num_layers:
+        if self.use_dropout:
+          dout = dropout_backward(dout, dropout_cache)
+
         dout = relu_backward(dout, z_cache)
         if self.use_batchnorm:
           gamma_label = 'gamma%d' % layer
