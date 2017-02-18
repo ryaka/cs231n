@@ -324,7 +324,7 @@ class FullyConnectedNet(object):
     loss, dL = softmax_loss(layer_cache[-1]['output'], y)
     # Take into account regularization
     if self.reg > 0:
-      loss += 0.5 * self.reg *  np.sum(np.sum(v * v) for k, v in self.params.iteritems() if 'W' in k)
+      loss += 0.5 * self.reg * np.sum(np.sum(v * v) for k, v in self.params.iteritems() if 'W' in k)
 
     dout = dL
     for layer in xrange(self.num_layers, 0, -1):
