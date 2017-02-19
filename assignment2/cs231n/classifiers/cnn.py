@@ -18,7 +18,7 @@ class ThreeLayerConvNet(object):
   
   def __init__(self, input_dim=(3, 32, 32), num_filters=32, filter_size=7,
                hidden_dim=100, num_classes=10, weight_scale=1e-3, reg=0.0,
-               dtype=np.float32):
+               use_batchnorm=False, dtype=np.float32):
     """
     Initialize a new network.
     
@@ -36,6 +36,7 @@ class ThreeLayerConvNet(object):
     self.params = {}
     self.reg = reg
     self.dtype = dtype
+    self.use_batchnorm = use_batchnorm
     
     ############################################################################
     # Initialize weights and biases for the three-layer convolutional          #
@@ -65,6 +66,15 @@ class ThreeLayerConvNet(object):
     self.params['W3'] = weight_scale * np.random.randn(hidden_dim, num_classes)
     self.params['b3'] = np.zeros(num_classes)
 
+    if self.use_batchnorm:
+      self.params['gamma1'] = np.ones(num_filters)
+      self.params['beta1'] = np.zeros(num_filters)
+
+      self.params['gamma2'] = np.ones(hidden_dim)
+      self.params['beta2'] = np.zeros(hidden_dim)
+
+      self.bn_params = [{'mode': 'train'}, {'mode': 'train'}]
+
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -82,6 +92,11 @@ class ThreeLayerConvNet(object):
     W1, b1 = self.params['W1'], self.params['b1']
     W2, b2 = self.params['W2'], self.params['b2']
     W3, b3 = self.params['W3'], self.params['b3']
+
+    if self.use_batchnorm:
+      mode = 'test' if y is None else 'train'
+      for bn_param in self.bn_params:
+        bn_param[mode] = mode
     
     # pass conv_param to the forward pass for the convolutional layer
     filter_size = W1.shape[2]
@@ -99,7 +114,15 @@ class ThreeLayerConvNet(object):
     #conv - relu - 2x2 max pool - affine - relu - affine - softmax
     z1, cache1 = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
 
+    if self.use_batchnorm:
+      bn_param, gamma, beta = self.bn_params[0], self.params['gamma1'], self.params['beta1']
+      z1, bn_cache1 = spatial_batchnorm_forward(z1, gamma, beta, bn_param)
+
     z2, cache2 = affine_relu_forward(z1, W2, b2)
+
+    if self.use_batchnorm:
+      bn_param, gamma, beta = self.bn_params[1], self.params['gamma2'], self.params['beta2']
+      z2, bn_cache2 = batchnorm_forward(z2, gamma, beta, bn_param)
 
     z3, cache3 = affine_forward(z2, W3, b3)
     ############################################################################
@@ -122,7 +145,15 @@ class ThreeLayerConvNet(object):
     dout = dL
 
     dout, grads['W3'], grads['b3'] = affine_backward(dout, cache3)
+
+    if self.use_batchnorm:
+      dout, grads['gamma2'], grads['beta2'] = batchnorm_backward_alt(dout, bn_cache2)
+
     dout, grads['W2'], grads['b2'] = affine_relu_backward(dout, cache2)
+
+    if self.use_batchnorm:
+      dout, grads['gamma1'], grads['beta1'] = spatial_batchnorm_backward(dout, bn_cache1)
+
     dout, grads['W1'], grads['b1'] = conv_relu_pool_backward(dout, cache1)
 
     if self.reg > 0:
