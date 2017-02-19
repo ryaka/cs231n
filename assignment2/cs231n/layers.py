@@ -672,7 +672,7 @@ def max_pool_backward_naive(dout, cache):
 def spatial_batchnorm_forward(x, gamma, beta, bn_param):
   """
   Computes the forward pass for spatial batch normalization.
-  
+
   Inputs:
   - x: Input data of shape (N, C, H, W)
   - gamma: Scale parameter, of shape (C,)
@@ -686,7 +686,7 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
       default of momentum=0.9 should work well in most situations.
     - running_mean: Array of shape (D,) giving running mean of features
     - running_var Array of shape (D,) giving running variance of features
-    
+
   Returns a tuple of:
   - out: Output data, of shape (N, C, H, W)
   - cache: Values needed for the backward pass
@@ -702,7 +702,7 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
   #############################################################################
 
   for c in xrange(C):
-    x_reshaped = x[:, c, :, :].reshape(N, H * W)
+    x_reshaped = x[:, c, :, :].reshape(N * H * W, 1)
     bn_reshaped, bn_cache = batchnorm_forward(x_reshaped, gamma[c], beta[c], bn_param)
     out[:, c, :, :] = bn_reshaped.reshape(N, H, W)
     cache.append(bn_cache)
@@ -717,11 +717,11 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
 def spatial_batchnorm_backward(dout, cache):
   """
   Computes the backward pass for spatial batch normalization.
-  
+
   Inputs:
   - dout: Upstream derivatives, of shape (N, C, H, W)
   - cache: Values from the forward pass
-  
+
   Returns a tuple of:
   - dx: Gradient with respect to inputs, of shape (N, C, H, W)
   - dgamma: Gradient with respect to scale parameter, of shape (C,)
@@ -738,7 +738,7 @@ def spatial_batchnorm_backward(dout, cache):
   #############################################################################
 
   for c in xrange(C):
-    dout_reshaped_c = dout[:, c, :, :].reshape(N, H * W)
+    dout_reshaped_c = dout[:, c, :, :].reshape(N * H * W, 1)
     dx_reshaped_c, dgamma_c, dbeta_c = batchnorm_backward_alt(dout_reshaped_c, cache[c])
     dx[:, c, :, :] = dx_reshaped_c.reshape(N, H, W)
     dgamma[c] = np.sum(dgamma_c)
@@ -747,6 +747,7 @@ def spatial_batchnorm_backward(dout, cache):
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
+
 
   return dx, dgamma, dbeta
 
