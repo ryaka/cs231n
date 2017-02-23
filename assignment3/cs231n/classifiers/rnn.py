@@ -143,7 +143,10 @@ class CaptioningRNN(object):
     embed, embed_cache = word_embedding_forward(captions_in, W_embed)
 
     # 3
-    h, h_cache = rnn_forward(embed, h0, Wx, Wh, b)
+    if self.cell_type == 'rnn':
+      h, h_cache = rnn_forward(embed, h0, Wx, Wh, b)
+    elif self.cell_type == 'lstm':
+      h, h_cache = lstm_forward(embed, h0, Wx, Wh, b)
 
     # 4
     preds, preds_cache = temporal_affine_forward(h, W_vocab, b_vocab)
@@ -156,7 +159,10 @@ class CaptioningRNN(object):
     dout, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dL, preds_cache)
 
     # 3
-    dout, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dout, h_cache)
+    if self.cell_type == 'rnn':
+      dout, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dout, h_cache)
+    elif self.cell_type == 'lstm':
+      dout, dh0, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(dout, h_cache)
 
     # 2
     grads['W_embed'] = word_embedding_backward(dout, embed_cache)
@@ -206,7 +212,7 @@ class CaptioningRNN(object):
     W_vocab, b_vocab = self.params['W_vocab'], self.params['b_vocab']
     
     ###########################################################################
-    # TODO: Implement test-time sampling for the model. You will need to      #
+    # Implement test-time sampling for the model. You will need to            #
     # initialize the hidden state of the RNN by applying the learned affine   #
     # transform to the input image features. The first word that you feed to  #
     # the RNN should be the <START> token; its value is stored in the         #
@@ -229,20 +235,22 @@ class CaptioningRNN(object):
 
     captions[:, 0] = self._start
     prev_h = np.dot(features, W_proj) + b_proj
+    prev_c = np.zeros(prev_h.shape)
     for idx in xrange(1, max_length + 1):
       # 1
       embed, _ = word_embedding_forward(captions[:, idx-1], W_embed)
 
       # 2
-      next_h, _ = rnn_step_forward(embed, prev_h, Wx, Wh, b)
+      if self.cell_type == 'rnn':
+        prev_h, _ = rnn_step_forward(embed, prev_h, Wx, Wh, b)
+      elif self.cell_type == 'lstm':
+        prev_h, prev_c, _ = lstm_step_forward(embed, prev_h, prev_c, Wx, Wh, b)
 
       # 3
-      preds, _ = temporal_affine_forward(next_h.reshape(next_h.shape[0], 1, next_h.shape[1]), W_vocab, b_vocab)
+      preds, _ = temporal_affine_forward(prev_h.reshape(prev_h.shape[0], 1, prev_h.shape[1]), W_vocab, b_vocab)
 
       # 4
       captions[:, idx] = np.squeeze(np.argmax(preds, axis=2))
-
-      prev_h = next_h
 
     ############################################################################
     #                             END OF YOUR CODE                             #
